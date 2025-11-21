@@ -1,0 +1,1 @@
+also, the idea is that we dont have to develop or create any andoid/ios specific files. instead i want the consuming project to have ONE config and then MAM will automatically create the proper platform specific files in the build/gulp process

@@ -1,0 +1,34 @@
+{
+  "app": {
+    "id": "my-app",
+    "name": "My App"
+  },
+  "brand": {
+    "name": "My App",
+    "url": "https://example.com",
+    "contact": {
+      "email": "support@example.com"
+    },
+    "images": {
+      "icon": "./src/assets/images/icon.png",
+      "splash": "./src/assets/images/splash.png"
+    }
+  },
+  "metroPort": 8081,
+  "liveReloadPort": 35729,
+  "sentry": {
+    "dsn": ""
+  },
+  "google_analytics": {
+    "id": "",
+    "secret": ""
+  },
+  "firebaseConfig": {
+    "apiKey": "",
+    "authDomain": "",
+    "projectId": "",
+    "storageBucket": "",
+    "messagingSenderId": "",
+    "appId": ""
+  }
+}
