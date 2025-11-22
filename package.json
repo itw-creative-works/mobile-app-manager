@@ -1,6 +1,6 @@
 {
   "name": "mobile-app-manager",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Cross-platform mobile app framework for easy React Native development",
   "main": "dist/index.js",
   "exports": {
