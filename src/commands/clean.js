@@ -8,13 +8,13 @@ module.exports = function () {
 
   logger.info('Cleaning build artifacts...');
 
+  // DO NOT clean dist/ - React Native owns that directory
+  logger.info('Skipping dist/ (managed by React Native)');
+
+  // Clean other directories completely
   const dirsToClean = [
     '.temp',
-    'dist',
     'packaged',
-    'ios/build',
-    'android/app/build',
-    'android/build',
   ];
 
   dirsToClean.forEach((dir) => {
@@ -26,13 +26,20 @@ module.exports = function () {
   });
 
   // Recreate empty directories
-  const dirsToRecreate = ['.temp', 'dist', 'packaged'];
+  const dirsToRecreate = ['.temp', 'packaged'];
 
   dirsToRecreate.forEach((dir) => {
     const fullPath = path.join(projectRoot, dir);
     jetpack.dir(fullPath);
     logger.info(`Created: ${dir}`);
   });
+
+  // Ensure dist exists (but don't clean it)
+  const distDir = path.join(projectRoot, 'dist');
+  if (!jetpack.exists(distDir)) {
+    jetpack.dir(distDir);
+    logger.info('Created: dist');
+  }
 
   logger.info('Clean complete!');
 };

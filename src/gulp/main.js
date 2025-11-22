@@ -38,7 +38,6 @@ exports.build = series(
   exports.defaults,
   exports.distribute,
   // parallel(exports.sass, exports.webpack, exports.assets),
-  exports.package,
 );
 
 // Compose task scheduler

@@ -8,7 +8,7 @@ module.exports = function () {
 
   try {
     const projectRoot = Manager.getRootPath('project');
-    const srcDir = require('path').join(projectRoot, 'src');
+    const distDir = require('path').join(projectRoot, 'dist');
 
     // Start gulp build process in background
     logger.log('Starting gulp build process...');
@@ -23,10 +23,11 @@ module.exports = function () {
       logger.log('Running Android app...');
 
       try {
-        // Run React Native Android from src directory
-        execSync('npx react-native run-android', {
+        // Run React Native Android using the CLI from dist/node_modules
+        const rnCliPath = require('path').join(distDir, 'node_modules', '.bin', 'react-native');
+        execSync(`${rnCliPath} run-android`, {
           stdio: 'inherit',
-          cwd: srcDir,
+          cwd: distDir,
         });
       } catch (error) {
         logger.error('Failed to run Android app:', error);

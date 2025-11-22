@@ -1,5 +1,6 @@
 const jetpack = require('fs-jetpack');
 const path = require('path');
+const JSON5 = require('json5');
 
 // Constants
 const METRO_PORT = 8081;
@@ -82,7 +83,8 @@ class Manager {
     const configPath = path.join(process.cwd(), 'config', 'mobile-app-manager.json');
 
     if (jetpack.exists(configPath)) {
-      this.config = jetpack.read(configPath, 'json');
+      const configContent = jetpack.read(configPath);
+      this.config = JSON5.parse(configContent);
     } else {
       this.config = {};
     }

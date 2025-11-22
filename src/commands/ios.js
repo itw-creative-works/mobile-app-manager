@@ -13,7 +13,11 @@ module.exports = function () {
 
   try {
     const projectRoot = Manager.getRootPath('project');
-    const srcDir = require('path').join(projectRoot, 'src');
+    const distDir = require('path').join(projectRoot, 'dist');
+
+    // Get arguments from command line
+    const args = Manager.getArguments();
+    const simulator = args.simulator || args.s;
 
     // Start gulp build process in background
     logger.log('Starting gulp build process...');
@@ -30,7 +34,7 @@ module.exports = function () {
       try {
         execSync('xcrun simctl list devices available', {
           stdio: 'inherit',
-          cwd: srcDir,
+          cwd: distDir,
         });
       } catch (error) {
         logger.warn('Could not list simulators:', error.message);
@@ -39,10 +43,18 @@ module.exports = function () {
       logger.log('Running iOS app...');
 
       try {
-        // Run React Native iOS from src directory
-        execSync('npx react-native run-ios', {
+        // Build command with optional simulator argument
+        const rnCliPath = require('path').join(distDir, 'node_modules', '.bin', 'react-native');
+        let command = `${rnCliPath} run-ios`;
+
+        if (simulator) {
+          command += ` --simulator="${simulator}"`;
+          logger.log(`Using simulator: ${simulator}`);
+        }
+
+        execSync(command, {
           stdio: 'inherit',
-          cwd: srcDir,
+          cwd: distDir,
         });
       } catch (error) {
         logger.error('Failed to run iOS app:', error);

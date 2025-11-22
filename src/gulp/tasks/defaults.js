@@ -1,115 +1,294 @@
+// Libraries
 const Manager = require('../../build.js');
 const logger = Manager.logger('defaults');
-const { watch, series } = require('gulp');
+const { src, dest, watch, series } = require('gulp');
+const through2 = require('through2');
 const jetpack = require('fs-jetpack');
 const path = require('path');
+const { minimatch } = require('minimatch');
+const { template } = require('node-powertools');
+const JSON5 = require('json5');
 
-const mainRoot = Manager.getRootPath('main');
-const projectRoot = Manager.getRootPath('project');
-const delay = 250;
+// Load package
+const package = Manager.getPackage('main');
+const project = Manager.getPackage('project');
+const config = Manager.getConfig('project');
+const rootPathPackage = Manager.getRootPath('main');
+const rootPathProject = Manager.getRootPath('project');
 
-// File mapping rules
-const fileMapping = [
-  {
-    source: 'defaults/**/*',
-    destination: '',
+// Get clean versions
+const cleanVersions = { versions: package.engines };
+
+// File MAP
+const FILE_MAP = {
+  // Files to skip overwrite
+  'src/**/*': {
     overwrite: false,
   },
-  {
-    source: 'defaults/config/mobile-app-manager.json',
-    destination: 'config',
+
+  // Files to rename
+  '_.gitignore': {
+    name: (file) => file.name.replace('_.gitignore', '.gitignore'),
+  },
+
+  // Config file with smart merging
+  'config/mobile-app-manager.json': {
     overwrite: true,
     merge: true,
   },
+
+  // App.json with transformation
+  'dist/app.json': {
+    overwrite: true,
+    transform: true,
+  },
+
+  // Files to always overwrite
+  'tsconfig.json': {
+    overwrite: true,
+  },
+
+  // Files to skip
+  '**/.DS_Store': {
+    skip: true,
+  },
+}
+
+// Glob
+const input = [
+  // Files to include
+  `${rootPathPackage}/dist/defaults/**/*`,
 ];
+const output = './';
+const delay = 250;
 
-function defaults(complete) {
-  logger.log('Starting...');
+// Index
+let index = -1;
 
-  const defaultsPath = path.join(mainRoot, 'dist', 'defaults');
+// Helper function to merge configs intelligently
+function mergeConfigs(existingConfig, newConfig) {
+  const merged = { ...newConfig };
 
-  if (!jetpack.exists(defaultsPath)) {
-    logger.warn('No defaults directory found');
-    complete();
-    return;
-  }
+  // Recursively merge nested objects
+  function mergeNested(target, source, newDefaults) {
+    for (const key in newDefaults) {
+      if (Object.prototype.hasOwnProperty.call(newDefaults, key)) {
+        const newValue = newDefaults[key];
+        const existingValue = source[key];
 
-  fileMapping.forEach((mapping) => {
-    const sourcePath = path.join(mainRoot, 'dist', mapping.source);
-    const isGlobPattern = mapping.source.includes('*');
-
-    if (isGlobPattern) {
-      // Handle glob patterns
-      const baseDir = mapping.source.split('*')[0].replace(/\/$/, '');
-      const basePath = path.join(mainRoot, 'dist', baseDir);
-
-      if (!jetpack.exists(basePath)) {
-        return;
-      }
-
-      const files = jetpack.find(basePath, {
-        matching: mapping.source.replace(baseDir + '/', ''),
-        files: true,
-        directories: false,
-      });
-
-      files.forEach((file) => {
-        const relativePath = path.relative(basePath, file);
-        const destPath = path.join(projectRoot, mapping.destination, relativePath);
-
-        if (!jetpack.exists(destPath) || mapping.overwrite) {
-          jetpack.copy(file, destPath, { overwrite: mapping.overwrite });
-        }
-      });
-    } else {
-      // Handle specific files
-      if (!jetpack.exists(sourcePath)) {
-        return;
-      }
-
-      const filename = path.basename(sourcePath);
-      const destPath = path.join(projectRoot, mapping.destination, filename);
-
-      if (!jetpack.exists(destPath) || mapping.overwrite) {
-        if (mapping.merge && jetpack.exists(destPath)) {
-          // Merge JSON files
-          try {
-            const defaultConfig = jetpack.read(sourcePath, 'json');
-            const existingConfig = jetpack.read(destPath, 'json');
-            const merged = Object.assign({}, defaultConfig, existingConfig);
-            jetpack.write(destPath, merged);
-            logger.log(`Merged: ${mapping.destination}/${filename}`);
-          } catch (error) {
-            logger.error(`Failed to merge: ${mapping.destination}/${filename}`, error);
-          }
+        if (typeof newValue === 'object' && newValue !== null && !Array.isArray(newValue)) {
+          // Handle nested objects
+          target[key] = target[key] || {};
+          mergeNested(target[key], existingValue || {}, newValue);
+        } else if (Object.prototype.hasOwnProperty.call(source, key) && existingValue !== 'default') {
+          // User has a custom value, keep it
+          target[key] = existingValue;
         } else {
-          jetpack.copy(sourcePath, destPath, { overwrite: mapping.overwrite });
+          // User doesn't have this option or has 'default', use new default
+          target[key] = newValue;
         }
       }
     }
-  });
+  }
 
-  logger.log('Finished!');
-  complete();
+  mergeNested(merged, existingConfig, newConfig);
+
+  return merged;
+}
+
+// Main task
+function defaults(complete, changedFile) {
+  // Increment index
+  index++;
+
+  // Log
+  logger.log('Starting...');
+
+  // Use changedFile if provided, otherwise use all inputs
+  const filesToProcess = changedFile ? [changedFile] : input;
+
+  // Complete
+  return src(filesToProcess, { base: `${rootPathPackage}/dist/defaults`, dot: true, encoding: false })  // Add base to preserve directory structure
+    .pipe(customTransform())
+    .pipe(dest(output, { encoding: false }))
+    .on('finish', () => {
+      // Log
+      logger.log('Finished!');
+
+      // Complete
+      return complete();
+    });
+}
+
+function customTransform() {
+  return through2.obj(function (file, _, callback) {
+    // Skip if it's a directory
+    if (file.isDirectory()) {
+      return callback(null, file);
+    }
+
+    // If the file is named .gitkeep, create the directory but don't copy the file
+    if (path.basename(file.path) === '.gitkeep') {
+      jetpack.dir(path.dirname(path.join(output, path.relative(file.base, file.path))));
+      return callback();
+    }
+
+    // Get relative path
+    const relativePath = path.relative(file.base, file.path).replace(/\\/g, '/');
+
+    // Check if this is a binary file BEFORE any processing
+    const isBinaryFile = /\.(jpg|jpeg|png|gif|webp|svg|ico|woff|woff2|ttf|otf|eot|pdf|zip|tar|gz|mp3|mp4|avi|mov)$/i.test(file.path);
+
+    // Build item
+    const item = {
+      source: path.dirname(file.path),
+      name: path.basename(file.path),
+      destination: path.dirname(relativePath),
+    };
+
+    const options = getFileOptions(relativePath);
+
+    // Handle dynamic rename
+    if (typeof options.name === 'function') {
+      item.name = options.name(item);
+    }
+
+    // Handle dynamic path
+    if (typeof options.path === 'function') {
+      item.destination = options.path(item);
+    }
+
+    // Handle overwrite/skip as functions
+    if (typeof options.overwrite === 'function') {
+      options.overwrite = options.overwrite(item);
+    }
+    if (typeof options.skip === 'function') {
+      options.skip = options.skip(item);
+    }
+
+    // Final relative path
+    const finalRelativePath = path.join(item.destination, item.name);
+    const fullOutputPath = path.join(output, finalRelativePath);
+
+    // Check existence
+    const exists = jetpack.exists(fullOutputPath);
+
+    // Handle app.json transformation
+    if (options.transform && relativePath === 'dist/app.json' && !isBinaryFile) {
+      try {
+        const appJson = JSON.parse(file.contents.toString());
+
+        // Use brand.name from config
+        if (config.brand && config.brand.name) {
+          // name: brand.name with spaces removed
+          appJson.name = config.brand.name.replace(/\s+/g, '');
+          // displayName: brand.name as-is
+          appJson.displayName = config.brand.name;
+        }
+
+        // Update file contents with transformed config
+        file.contents = Buffer.from(JSON.stringify(appJson, null, 2));
+
+        logger.log(`Transformed app.json`);
+      } catch (error) {
+        logger.error(`Error transforming app.json:`, error);
+        // Fall through to normal processing if transform fails
+      }
+    }
+
+    // Handle config merging
+    if (options.merge && exists && !isBinaryFile) {
+      try {
+        const existingContent = jetpack.read(fullOutputPath);
+        const newContent = file.contents.toString();
+
+        const existingConfig = JSON5.parse(existingContent);
+        const newConfig = JSON5.parse(newContent);
+
+        // Merge configs, preserving user's non-default values
+        const mergedConfig = mergeConfigs(existingConfig, newConfig);
+
+        // Update file contents with merged config
+        file.contents = Buffer.from(JSON.stringify(mergedConfig, null, 2));
+
+        logger.log(`Merged config file: ${relativePath}`);
+      } catch (error) {
+        logger.error(`Error merging config file ${relativePath}:`, error);
+        // Fall through to normal processing if merge fails
+      }
+    }
+
+    // Skip if instructed
+    if (options.skip || (!options.overwrite && exists && !options.merge)) {
+      logger.log(`Skipping file: ${relativePath}`);
+      return callback();
+    }
+
+    // Run template if required
+    if (options.template && !isBinaryFile) {
+      const contents = file.contents.toString();
+      const templated = template(contents, options.template);
+
+      // Update file contents
+      file.contents = Buffer.from(templated);
+    }
+
+    // Update path
+    file.path = path.join(file.base, finalRelativePath);
+
+    // Push transformed file
+    this.push(file);
+
+    // Complete
+    return callback();
+  });
 }
 
 function defaultsWatcher(complete) {
+  // Quit if in build mode
   if (Manager.isBuildMode()) {
     logger.log('[watcher] Skipping watcher in build mode');
     return complete();
   }
 
+  // Log
   logger.log('[watcher] Watching for changes...');
 
-  watch(
-    path.join(mainRoot, 'dist', 'defaults', '**', '*'),
-    { delay: delay, dot: true },
-    defaults
-  ).on('change', (path) => {
-    logger.log(`[watcher] File changed (${path})`);
+  // Watch for changes
+  watch(input, { delay: delay, dot: true })
+  .on('change', (changedPath) => {
+    logger.log(`[watcher] File changed (${changedPath})`);
+    // Call defaults with just the changed file
+    defaults(() => {}, changedPath);
   });
 
+  // Complete
   return complete();
 }
 
+// Default Task
 module.exports = series(defaults, defaultsWatcher);
+
+function getFileOptions(filePath) {
+  const defaults = {
+    overwrite: true,
+    name: null,
+    path: null,
+    template: null,
+    transform: false,
+    skip: false,
+    merge: false,
+    rule: null,
+  };
+
+  let options = { ...defaults };
+
+  for (const pattern in FILE_MAP) {
+    if (minimatch(filePath, pattern)) {
+      options = { ...options, ...FILE_MAP[pattern] };
+      options.rule = pattern;
+    }
+  }
+
+  return options;
+}

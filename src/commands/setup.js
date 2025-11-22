@@ -34,6 +34,9 @@ module.exports = async function (options) {
       logger.log(`Node version: ${nodeVersion}`);
     }
 
+    // Check if CocoaPods is installed (required for iOS development)
+    checkCocoaPods();
+
     // Ensure peer dependencies + required dev dependencies
     if (options.checkPeerDependencies) {
       await ensurePeerDependencies(mainPackage, projectPackage, projectRoot);
@@ -43,7 +46,16 @@ module.exports = async function (options) {
     }
 
     // Initialize React Native project if needed
-    await ensureReactNativeProject(projectRoot);
+    await ensureReactNativeProject(mainPackage, projectRoot);
+
+    // Sync dependencies from root to dist
+    const syncResult = await syncDependenciesToDist(projectRoot);
+
+    // Install iOS pods (only if new dependencies were installed)
+    await installPods(projectRoot, syncResult);
+
+    // Clean up unwanted files from dist
+    cleanDistFiles(projectRoot);
 
     // Setup scripts
     if (options.setupScripts) {
@@ -133,11 +145,22 @@ function checkLocality(mainPackage, projectPackage) {
   }
 }
 
-async function ensureReactNativeProject(projectRoot) {
-  const srcDir = path.join(projectRoot, 'src');
+function checkCocoaPods() {
+  try {
+    execSync('which pod', { stdio: 'pipe' });
+    logger.log('CocoaPods is installed');
+  } catch (error) {
+    logger.error('CocoaPods is required but not installed.');
+    logger.error('Install it with: sudo gem install cocoapods');
+    throw new Error('CocoaPods not found. Please install CocoaPods to continue.');
+  }
+}
 
-  // Check if React Native project already exists (check for src/ios and src/android)
-  if (jetpack.exists(path.join(srcDir, 'ios')) && jetpack.exists(path.join(srcDir, 'android'))) {
+async function ensureReactNativeProject(mainPackage, projectRoot) {
+  const distDir = path.join(projectRoot, 'dist');
+
+  // Check if React Native project already exists (check for dist/ios and dist/android)
+  if (jetpack.exists(path.join(distDir, 'ios')) && jetpack.exists(path.join(distDir, 'android'))) {
     logger.log('React Native project already initialized');
     return;
   }
@@ -151,8 +174,8 @@ async function ensureReactNativeProject(projectRoot) {
 
     logger.log(`Initializing React Native project: ${projectName}`);
 
-    // Run React Native init in the src directory
-    execSync(`npx @react-native-community/cli init --directory ${srcDir} --install-pods`, {
+    // Run React Native init in the dist directory
+    execSync(`npx @react-native-community/cli@${mainPackage.engines.react} init --directory ${distDir} --install-pods`, {
       stdio: 'inherit',
       cwd: projectRoot,
     });
@@ -161,5 +184,55 @@ async function ensureReactNativeProject(projectRoot) {
   } catch (error) {
     logger.error('Failed to initialize React Native project:', error);
     throw error;
+  }
+}
+
+function cleanDistFiles(projectRoot) {
+  const distDir = path.join(projectRoot, 'dist');
+
+  // List of files to remove from dist directory
+  const filesToRemove = [
+    'tsconfig.json',
+  ];
+
+  filesToRemove.forEach((file) => {
+    const filePath = path.join(distDir, file);
+    if (jetpack.exists(filePath)) {
+      jetpack.remove(filePath);
+      logger.log(`Removed unwanted file: dist/${file}`);
+    }
+  });
+}
+
+async function syncDependenciesToDist(projectRoot) {
+  // Use the sync function from distribute task
+  const { syncDependenciesToDist } = require('../gulp/tasks/distribute.js');
+  return await syncDependenciesToDist();
+}
+
+async function installPods(projectRoot, syncResult) {
+  const iosDir = path.join(projectRoot, 'dist', 'ios');
+
+  if (!jetpack.exists(iosDir)) {
+    logger.log('iOS directory not found, skipping pod install');
+    return;
+  }
+
+  // Only run pod install if new dependencies were installed
+  if (syncResult && syncResult.newDepsInstalled) {
+    logger.log('New dependencies detected, installing CocoaPods dependencies...');
+
+    try {
+      execSync('pod install', {
+        stdio: 'inherit',
+        cwd: iosDir,
+      });
+      logger.log('CocoaPods dependencies installed successfully');
+    } catch (error) {
+      logger.error('Failed to install CocoaPods dependencies:', error);
+      throw error;
+    }
+  } else {
+    logger.log('No new dependencies detected, skipping pod install');
   }
 }

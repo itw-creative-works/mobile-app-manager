@@ -1,34 +1,33 @@
 {
-  "app": {
-    "id": "my-app",
-    "name": "My App"
+  app: {
+    id: 'my-app',
+    name: 'My App'
   },
-  "brand": {
-    "name": "My App",
-    "url": "https://example.com",
-    "contact": {
-      "email": "support@example.com"
+  brand: {
+    name: 'My App',
+    url: 'https://example.com',
+    contact: {
+      email: 'support@itwcreativeworks.com',
     },
-    "images": {
-      "icon": "./src/assets/images/icon.png",
-      "splash": "./src/assets/images/splash.png"
-    }
+    images: {
+      brandmark: 'https://cdn.itwcreativeworks.com/assets/itw-creative-works/images/logo/itw-creative-works-brandmark-blue-1024x1024.png',
+      wordmark: 'https://cdn.itwcreativeworks.com/assets/itw-creative-works/images/logo/itw-creative-works-wordmark-blue-1024x.png',
+      combomark: 'https://cdn.itwcreativeworks.com/assets/itw-creative-works/images/logo/itw-creative-works-combomark-blue-1024x.png',
+    },
   },
-  "metroPort": 8081,
-  "liveReloadPort": 35729,
-  "sentry": {
-    "dsn": ""
+  sentry: {
+    dsn: ''
   },
-  "google_analytics": {
-    "id": "",
-    "secret": ""
+  google_analytics: {
+    id: '',
+    secret: ''
   },
-  "firebaseConfig": {
-    "apiKey": "",
-    "authDomain": "",
-    "projectId": "",
-    "storageBucket": "",
-    "messagingSenderId": "",
-    "appId": ""
+  firebaseConfig: {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: ''
   }
 }
